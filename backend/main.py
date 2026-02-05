@@ -1,8 +1,9 @@
-from fastapi.staticfiles import StaticFiles
+
 import joblib
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import pandas as pd
 
