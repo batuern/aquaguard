@@ -239,7 +239,7 @@ function rebuildLayers() {
 }
 
 function renderTable() {
-  const visible = filterParcels();
+  const visible = filterParcels(); // şimdilik sadece province/source filtresi gibi kullanacağız
   if (!visible.length) {
     elTable.innerHTML =
       '<div class="map-table-row"><span>Sonuç yok</span><span>—</span><span>—</span><span>—</span></div>';
@@ -248,18 +248,17 @@ function renderTable() {
 
   elTable.innerHTML = visible
     .map((p) => {
-      const snap = getSnapshot(p, state.filters.from, state.filters.to);
-      const display = displayStress(snap.stress);
-      const bucket = stressBucket(display);
+      // p: { id, name, province, district, source }
       const sourceLabel =
         p.source === "ndvi_era5" ? "NDVI + ERA5" : p.source === "ndvi" ? "NDVI" : "Manuel";
-      const updated = fmtDate(snap.date);
+
+      // stress/updated backend’den direkt gelmiyor, placeholder gösteriyoruz.
       return `
         <div class="map-table-row" data-id="${p.id}" role="button" tabindex="0">
-          <span>${p.name}</span>
-          <span><span class="dot-sm ${bucket}"></span> ${STRESS[bucket].label} (${display})</span>
-          <span>${updated}</span>
-          <span>${sourceLabel}</span>
+          <span>${p.name || p.id}</span>
+          <span>—</span>
+          <span>—</span>
+          <span>${sourceLabel || "—"}</span>
         </div>
       `;
     })
