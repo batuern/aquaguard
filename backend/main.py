@@ -25,7 +25,7 @@ app.add_middleware(
 )
 
 DATA_DIR = Path(__file__).parent / "data"
-CSV_PATH = DATA_DIR / "parcels_timeseries.csv"
+CSV_PATH = DATA_DIR / "parcels_timeseries1.csv"
 
 ML_PARQUET_PATH = DATA_DIR / "ml_ready_data.parquet"
 MODEL_PATH = Path(__file__).parent / "model" / "aquaguard_model.pkl"
