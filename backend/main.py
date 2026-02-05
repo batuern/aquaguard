@@ -1,3 +1,4 @@
+from fastapi.staticfiles import StaticFiles
 import joblib
 import numpy as np
 from fastapi import FastAPI
