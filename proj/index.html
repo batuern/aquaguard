@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AquaGuard AI - Parsel Bazlı Kuraklık ve Sulama Asistanı</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <!-- Üst Navigasyon -->
+    <header class="navbar">
+      <div class="container nav-inner">
+        <div class="logo">
+          <span class="logo-icon">
+            <svg
+              class="logo-mark"
+              viewBox="0 0 40 40"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <!-- Topraktan oluşan zemin -->
+              <rect
+                class="logo-soil"
+                x="4"
+                y="22"
+                width="32"
+                height="10"
+                rx="4"
+              />
+              <!-- Su damlası -->
+              <path
+                class="logo-drop"
+                d="M20 7 C17 11 14 15 14 19 C14 22.3 16.7 25 20 25 C23.3 25 26 22.3 26 19 C26 15 23 11 20 7 Z"
+              />
+            </svg>
+          </span>
+          <span class="logo-text">AquaGuard AI</span>
+        </div>
+        <nav class="nav-links">
+          <a href="#features">Özellikler</a>
+          <a href="#map">Parsel Haritası</a>
+          <a href="#stats">Model Metrikleri</a>
+          <a href="#report">Parsel Ekle</a>
+          <a href="#faq">S.S.S.</a>
+        </nav>
+        <div class="nav-actions">
+          <button class="btn btn-ghost">Giriş Yap</button>
+          <button class="btn btn-primary">Kayıt Ol</button>
+        </div>
+        <button class="nav-toggle" aria-label="Menüyü Aç/Kapat">
+          ☰
+        </button>
+      </div>
+    </header>
+
+    <!-- Hero Bölümü -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <div class="hero-content">
+          <h1>
+            Parsellerinizi <span class="highlight">kuraklığa karşı koruyun</span>,
+            suyu verimli yönetin.
+          </h1>
+          <p class="hero-subtitle">
+            AquaGuard AI, Sentinel-2 NDVI, ERA5 iklim verileri ve XGBoost tabanlı
+            yapay zeka modelleriyle 7–14 gün önceden parsel bazlı stres tahmini ve
+            akıllı sulama önerileri sunar.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#map">Canlı Parsel Haritası</a>
+            <a class="btn btn-outline" href="#stats">Model Performansını Gör</a>
+          </div>
+          <div class="hero-meta">
+            <div class="meta-item">
+              <span class="meta-label">Aktif izlenen alan</span>
+              <span class="meta-value">12.480 ha</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Model doğruluk oranı</span>
+              <span class="meta-value">%94</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Öğrenilen zaman serisi</span>
+              <span class="meta-value">1M+ nokta</span>
+            </div>
+          </div>
+        </div>
+        <div class="hero-panel">
+          <div class="panel-header">
+            <span class="dot red"></span>
+            <span class="dot yellow"></span>
+            <span class="dot green"></span>
+            <span class="panel-title">Canlı Parsel Stres Panosu</span>
+          </div>
+          <div class="panel-body">
+            <div class="risk-legend">
+              <span><span class="badge risk-high"></span> Yüksek Stres</span>
+              <span><span class="badge risk-medium"></span> Orta Stres</span>
+              <span><span class="badge risk-low"></span> Düşük Stres</span>
+            </div>
+            <div class="mini-map">
+              <div class="map-cell high"></div>
+              <div class="map-cell medium"></div>
+              <div class="map-cell low"></div>
+              <div class="map-cell high"></div>
+              <div class="map-cell low"></div>
+              <div class="map-cell medium"></div>
+              <div class="map-cell low"></div>
+              <div class="map-cell medium"></div>
+              <div class="map-cell high"></div>
+            </div>
+            <div class="panel-list">
+              <div class="panel-row">
+                <div>
+                  <div class="panel-label">Konya / Karapınar</div>
+                  <div class="panel-sub">
+                    Son ölçüm: 12 dk önce · NDVI anomalisi tespit edildi
+                  </div>
+                </div>
+                <span class="chip chip-high">Yüksek stres</span>
+              </div>
+              <div class="panel-row">
+                <div>
+                  <div class="panel-label">Niğde / Bor</div>
+                  <div class="panel-sub">
+                    Son ölçüm: 38 dk önce · Hafif stres, yağış bekleniyor
+                  </div>
+                </div>
+                <span class="chip chip-medium">İzlemede</span>
+              </div>
+              <div class="panel-row">
+                <div>
+                  <div class="panel-label">Kayseri / İncesu</div>
+                  <div class="panel-sub">
+                    Son ölçüm: 2 saat önce · NDVI trendi sağlıklı
+                  </div>
+                </div>
+                <span class="chip chip-low">Düşük stres</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Özellikler -->
+    <section id="features" class="section">
+      <div class="container">
+        <div class="section-header">
+          <h2>Parsel bazlı kuraklık ve sulama asistanı</h2>
+          <p>
+            AquaGuard AI; erken uyarı, stres tahmini ve sulama planlamasını tek bir
+            panelde birleştirir.
+          </p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card">
+            <div class="feature-icon">📡</div>
+            <h3>Çoklu veri kaynakları</h3>
+            <p>
+              Sentinel‑2 NDVI, ERA5 yağış/sıcaklık/ET ve saha gözlemlerini tek
+              zaman serisi halinde işler.
+            </p>
+            <ul>
+              <li>Parsel bazlı NDVI zaman serileri</li>
+              <li>Yağış, sıcaklık ve ET entegrasyonu</li>
+              <li>Toprak nemi ve stres sinyalleri</li>
+            </ul>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🤖</div>
+            <h3>Yapay zeka tahmin motoru</h3>
+            <p>
+              XGBoost Regressor ile 7–14 gün ileriye dönük parsel bazlı stres
+              projeksiyonları üretir.
+            </p>
+            <ul>
+              <li>0–100 arası stres riski skoru</li>
+              <li>Parsel önceliklendirme sıraları</li>
+              <li>MAE = 0.0619 model başarımı</li>
+            </ul>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🚨</div>
+            <h3>Akıllı sulama önerileri</h3>
+            <p>
+              "Ne zaman ve ne kadar?" sorusuna mm cinsinden, açıklanabilir (XAI)
+              sulama önerileriyle yanıt verir.
+            </p>
+            <ul>
+              <li>Önerilen sulama zamanı pencereleri</li>
+              <li>Parsel bazlı su ihtiyacı tahmini</li>
+              <li>Su tasarrufu ve verimlilik raporları</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Canlı Harita / Filtreler -->
+    <section id="map" class="section section-alt">
+      <div class="container">
+        <div class="section-header">
+          <h2>Parsel stres ve sulama öncelik haritası</h2>
+          <p>
+            Parsellerinizi stres seviyesine, iklim sinyallerine ve tarih aralıklarına
+            göre filtreleyip, hangi tarlanın önce suya ihtiyacı olduğunu görün.
+          </p>
+        </div>
+        <div class="map-layout">
+          <aside class="map-filters">
+            <h3>Parsel filtreleri</h3>
+            <label class="field">
+              <span>İl / İlçe</span>
+              <select id="filterProvince">
+                <option value="all">Tümü</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Stres seviyesi</span>
+              <div class="chip-group">
+                <button class="chip-filter active" type="button" data-stress="all">
+                  Tümü
+                </button>
+                <button class="chip-filter danger" type="button" data-stress="high">
+                  Yüksek
+                </button>
+                <button class="chip-filter warning" type="button" data-stress="medium">
+                  Orta
+                </button>
+                <button class="chip-filter success" type="button" data-stress="low">
+                  Düşük
+                </button>
+              </div>
+            </label>
+            <label class="field">
+              <span>Tarih aralığı</span>
+              <input id="filterFrom" type="date" />
+              <input id="filterTo" type="date" />
+            </label>
+            <label class="field">
+              <span>Veri kaynağı</span>
+              <select id="filterSource">
+                <option value="all">Hepsi</option>
+                <option value="ndvi_era5">NDVI + ERA5</option>
+                <option value="ndvi">NDVI</option>
+                <option value="manual">Manuel</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Yağış simülasyonu</span>
+              <input
+                id="rainSim"
+                type="range"
+                min="60"
+                max="120"
+                value="100"
+              />
+              <small id="rainSimLabel" class="sim-label">%100 (gerçek veriye en yakın)</small>
+            </label>
+            <button id="applyFilters" class="btn btn-outline full-width" type="button">
+              Filtreleri Uygula
+            </button>
+          </aside>
+
+          <div class="map-panel">
+            <div class="map-panel-top">
+              <div id="mapLoading" class="map-loading">
+                <div class="map-loading-inner">
+                  <div class="spinner"></div>
+                  <p>AI analiz ediliyor, parseller hazırlanıyor...</p>
+                </div>
+              </div>
+              <div id="leafletMap" class="map-canvas" aria-label="Parsel haritası"></div>
+              <aside class="analysis-panel" aria-label="AI açıklama paneli">
+                <div class="analysis-header">
+                  <div>
+                    <div class="analysis-title" id="analysisTitle">Bir parsel seçin</div>
+                    <div class="analysis-sub" id="analysisSub">
+                      Haritadaki parseli tıklayın veya tablodan seçin.
+                    </div>
+                  </div>
+                  <div class="analysis-badges" id="analysisBadges"></div>
+                </div>
+
+                <div class="analysis-kpis">
+                  <div class="kpi">
+                    <span class="kpi-label">Stres skoru</span>
+                    <span class="kpi-value" id="kpiStress">—</span>
+                  </div>
+                  <div class="kpi">
+                    <span class="kpi-label">Son NDVI</span>
+                    <span class="kpi-value" id="kpiNdvi">—</span>
+                  </div>
+                  <div class="kpi">
+                    <span class="kpi-label">Son yağış</span>
+                    <span class="kpi-value" id="kpiRain">—</span>
+                  </div>
+                  <div class="kpi">
+                    <span class="kpi-label">ET</span>
+                    <span class="kpi-value" id="kpiEt">—</span>
+                  </div>
+                </div>
+
+                <div class="analysis-why" id="analysisWhy">
+                  Seçili parsel için “neden yüksek stres?” açıklaması burada gösterilecek.
+                </div>
+
+                <div class="chart-grid">
+                  <div class="chart-card">
+                    <div class="chart-title">NDVI zaman serisi</div>
+                    <canvas id="chartNdvi" height="120"></canvas>
+                  </div>
+                  <div class="chart-card">
+                    <div class="chart-title">Yağış &amp; ET (son 14 gün)</div>
+                    <canvas id="chartClimate" height="120"></canvas>
+                  </div>
+                  <div class="chart-card chart-wide">
+                    <div class="chart-title">Açıklayıcı faktörler (demo)</div>
+                    <canvas id="chartShap" height="120"></canvas>
+                  </div>
+                </div>
+
+                <div class="recommendation">
+                  <div class="rec-title">Akıllı sulama önerisi</div>
+                  <div class="rec-body" id="recBody">Bir parsel seçin.</div>
+                </div>
+              </aside>
+            </div>
+            <div class="map-table">
+              <div class="map-table-header">
+                <span>Parsel</span>
+                <span>Stres</span>
+                <span>Son güncelleme</span>
+                <span>Kaynak</span>
+              </div>
+              <div id="parcelTableBody"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- İstatistikler -->
+    <section id="stats" class="section">
+      <div class="container">
+        <div class="section-header">
+          <h2>Model başarımı ve kapsam</h2>
+          <p>
+            AquaGuard AI, yüksek doğruluklu XGBoost modelleriyle parsel bazlı stres
+            tahmini ve su yönetimi kararlarını destekler.
+          </p>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-label">Model hata oranı (MAE)</span>
+            <span class="stat-value">0.0619</span>
+            <span class="stat-change positive">Yüksek doğruluk</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Tahmin penceresi</span>
+            <span class="stat-value">7–14 gün</span>
+            <span class="stat-change">İleriye dönük stres tahmini</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">İzlenen parsel sayısı</span>
+            <span class="stat-value">10.000+</span>
+            <span class="stat-change positive">Büyüyen kapsama alanı</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Veri kaynakları</span>
+            <span class="stat-value">Sentinel‑2 & ERA5</span>
+            <span class="stat-change">Uydu + iklim verisi</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Olay / Obruk Bildirim Formu -->
+    <section id="report" class="section section-alt">
+      <div class="container">
+        <div class="section-header">
+          <h2>Yeni parsel veya gözlem ekle</h2>
+          <p>
+            Çiftçilerin ve kooperatiflerin tarlalarını sisteme tanımlaması ve sahadan
+            ek gözlemler paylaşması için basit bir form.
+          </p>
+        </div>
+        <div class="report-layout">
+          <form class="report-form" id="parcelForm">
+            <div class="form-row">
+              <label class="field">
+                <span>Ad Soyad</span>
+                <input
+                  type="text"
+                  name="fullName"
+                  placeholder="Adınızı ve soyadınızı yazın"
+                />
+              </label>
+              <label class="field">
+                <span>E-posta</span>
+                <input type="email" name="email" placeholder="ornek@eposta.com" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label class="field">
+                <span>İl</span>
+                <input type="text" name="province" placeholder="Örn. Konya" />
+              </label>
+              <label class="field">
+                <span>İlçe / Köy</span>
+                <input
+                  type="text"
+                  name="district"
+                  placeholder="İlçe ve köy/mahalle adı"
+                />
+              </label>
+            </div>
+            <div class="form-row">
+              <label class="field">
+                <span>Koordinatlar (opsiyonel)</span>
+                <input type="text" name="coords" placeholder="Enlem, boylam" />
+              </label>
+              <label class="field">
+                <span>Stres seviyesi tahmininiz</span>
+                <select>
+                  <option>Belirsiz</option>
+                  <option>Yüksek</option>
+                  <option>Orta</option>
+                  <option>Düşük</option>
+                </select>
+              </label>
+            </div>
+            <label class="field">
+              <span>Gözlem detayları</span>
+              <textarea
+                name="notes"
+                rows="4"
+                placeholder="Gözlemlediğiniz çatlaklar, sesler, çökmeler veya diğer detayları yazın..."
+              ></textarea>
+            </label>
+            <label class="field">
+              <span>Parsel fotoğrafı (opsiyonel)</span>
+              <div class="upload-area">
+                <span class="upload-icon">⬆</span>
+                <div>
+                  <strong>Dosya seçin</strong>
+                  <p>Görsel eklemek isteğe bağlıdır (JPG, PNG).</p>
+                </div>
+              </div>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" />
+              <span
+                >Verilerimin AquaGuard AI modeli ve paydaş kurumlarla
+                anonimleştirilmiş şekilde paylaşılmasına onay veriyorum.</span
+              >
+            </label>
+            <button type="submit" class="btn btn-primary full-width">
+              Parseli Kaydet
+            </button>
+          </form>
+
+          <aside class="report-info">
+            <h3>Parsel verileri nasıl değerlendirilir?</h3>
+            <ol>
+              <li>Koordinat ve parsel sınırları doğrulanır.</li>
+              <li>NDVI ve iklim zaman serileriyle eşleştirilir.</li>
+              <li>Stres skoru ve sulama önerileri üretilir.</li>
+            </ol>
+            <p class="info-note">
+              Bu sayfa, konsept bir arayüzdür. Sulama kararı almadan önce her zaman
+              ziraat mühendisinizle birlikte değerlendirme yapın.
+            </p>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sık Sorulan Sorular -->
+    <section id="faq" class="section">
+      <div class="container">
+        <div class="section-header">
+          <h2>Sık sorulan sorular</h2>
+          <p>AquaGuard AI kuraklık, stres tahmini ve sulama önerileri hakkında öne çıkan sorular.</p>
+        </div>
+        <div class="faq-grid">
+          <details class="faq-item">
+            <summary>Tahminler ne kadar ileriye dönük?</summary>
+            <p>
+              AquaGuard AI, geçmiş NDVI ve iklim zaman serilerini kullanarak 7–14 gün
+              ileriye dönük parsel bazlı stres projeksiyonları üretir.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary>Kimler kullanabilir?</summary>
+            <p>
+              Bireysel çiftçiler, sulama kooperatifleri, tarım danışmanları ve su
+              yönetiminden sorumlu kurumlar AquaGuard AI'dan faydalanabilir.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary>Verilerim nerede saklanıyor?</summary>
+            <p>
+              Veriler güvenli bulut altyapısında, KVKK ve ilgili mevzuata uygun
+              şekilde saklanır. İstenirse kurum içi kurulum seçeneği de sunulabilir.
+            </p>
+          </details>
+          <details class="faq-item">
+            <summary>API veya entegrasyon imkânı var mı?</summary>
+            <p>
+              Evet. Mevcut CBS, tarla yönetim sistemleri veya kooperatif dashboard'larıyla
+              entegrasyon için REST API ve webhook desteği sağlanabilir.
+            </p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- Alt Bilgi -->
+    <footer class="footer">
+      <div class="container footer-inner">
+        <div class="footer-main">
+          <div class="logo footer-logo">
+            <span class="logo-icon">◎</span>
+            <span class="logo-text">AquaGuard AI</span>
+          </div>
+          <p>Parsellerinizi kuraklığa karşı koruyun, suyu verimli kullanın, veriminizi artırın.</p>
+        </div>
+        <div class="footer-columns">
+          <div>
+            <h4>Ürün</h4>
+            <a href="#features">Özellikler</a>
+            <a href="#stats">Raporlar</a>
+            <a href="#map">Parsel Haritası</a>
+          </div>
+          <div>
+            <h4>Kaynaklar</h4>
+            <a href="#faq">S.S.S.</a>
+            <a href="#report">Parsel Ekle</a>
+            <a href="#">Gizlilik</a>
+          </div>
+          <div>
+            <h4>İletişim</h4>
+            <a href="mailto:info@aquaguard.ai">info@aquaguard.ai</a>
+            <a href="#">Destek Talebi Oluştur</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
+
