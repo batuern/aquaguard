@@ -1,22 +1,35 @@
 import pandas as pd
 
+FEATURE_COLUMNS = [
+    "ndvi_anomaly_lag_7",
+    "ndvi_anomaly_lag_14",
+    "ndvi_anomaly_lag_21",
+    "rain_sum_7",
+    "rain_sum_14",
+    "temp_mean_7",
+    "temp_mean_14",
+]
+
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    # --- Column mapping from Data/Pipeline naming to our standard naming ---
+    # Column mapping from pipeline naming to our naming
     rename_map = {
         "precipitation_sum": "rain_mm",
         "temperature_2m_max": "temp_c",
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    # Ensure types
+    required = {"date", "parcel_id", "ndvi", "rain_mm", "temp_c"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Eksik kolon(lar): {sorted(missing)}. Beklenen: {sorted(required)}")
+
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values(["parcel_id", "date"]).reset_index(drop=True)
 
-
-    # --- NDVI anomaly (rolling z-score per parcel) ---
+    # NDVI anomaly (rolling z-score per parcel)
     mean_30 = (
         df.groupby("parcel_id")["ndvi"]
         .rolling(30, min_periods=15)
@@ -34,14 +47,14 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     df["ndvi_std_30"] = std_30
     df["ndvi_anomaly"] = (df["ndvi"] - df["ndvi_mean_30"]) / df["ndvi_std_30"]
 
-    # Avoid division by zero / infinite
+    # Avoid infinite
     df["ndvi_anomaly"] = df["ndvi_anomaly"].replace([float("inf"), float("-inf")], pd.NA)
 
-    # --- Lag features (per parcel) ---
+    # Lag features
     for lag in [7, 14, 21]:
         df[f"ndvi_anomaly_lag_{lag}"] = df.groupby("parcel_id")["ndvi_anomaly"].shift(lag)
 
-    # --- Weather rolling features ---
+    # Weather rolling features
     df["rain_sum_7"] = (
         df.groupby("parcel_id")["rain_mm"]
         .rolling(7, min_periods=3)
@@ -69,14 +82,3 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     return df
-
-
-FEATURE_COLUMNS = [
-    "ndvi_anomaly_lag_7",
-    "ndvi_anomaly_lag_14",
-    "ndvi_anomaly_lag_21",
-    "rain_sum_7",
-    "rain_sum_14",
-    "temp_mean_7",
-    "temp_mean_14",
-]
