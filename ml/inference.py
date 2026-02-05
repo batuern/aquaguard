@@ -130,3 +130,4 @@ def predict_7d_from_timeseries(df_timeseries: pd.DataFrame, debug: bool = False)
         out["debug"] = dbg
 
     return out
+
