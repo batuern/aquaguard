@@ -8,6 +8,13 @@ import pandas as pd
 
 app = FastAPI(title="AquaGuard AI Backend (MVP)")
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+FRONTEND_DIR = REPO_ROOT / "proj"
+
+if FRONTEND_DIR.exists():
+    # root "/" üzerinden proj/index.html servisi
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+
 # Frontend rahatça çağırabilsin (hackathon için)
 app.add_middleware(
     CORSMiddleware,
