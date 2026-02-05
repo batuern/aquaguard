@@ -4,6 +4,31 @@
    - Harita + tablo senkronu
    - "Neden yüksek stres?" AI açıklama paneli ve grafikler (mock SHAP)
 */
+const API = {
+  parcels: "/parcels",
+  timeseries: (parcelId) => `/timeseries?parcel_id=${encodeURIComponent(parcelId)}`,
+  predict: "/predict",
+  recommend: "/recommend",
+};
+
+async function apiGet(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`GET ${url} -> ${r.status}`);
+  return r.json();
+}
+
+async function apiPost(url, body) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`POST ${url} -> ${r.status} ${t}`);
+  }
+  return r.json();
+}
 
 const STRESS = {
   low: { label: "Düşük", color: "#16a34a", fill: "rgba(22,163,74,0.22)" },
@@ -60,131 +85,9 @@ function generateSeries(baseNdvi, trend, volatility = 0.02) {
 }
 
 // Basit GeoJSON poligonlar (demo amaçlı dikdörtgen parseller)
-const MOCK_PARCELS = [
-  {
-    id: "P-4201",
-    name: "Karapınar / Parsel 12",
-    province: "Konya",
-    district: "Karapınar",
-    source: "ndvi_era5",
-    geom: {
-      type: "Feature",
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          [
-            [33.007, 37.662],
-            [33.033, 37.662],
-            [33.033, 37.676],
-            [33.007, 37.676],
-            [33.007, 37.662],
-          ],
-        ],
-      },
-    },
-    series: generateSeries(0.58, -0.0042, 0.022),
-    shap: [
-      { feature: "NDVI_anomali", value: 0.38 },
-      { feature: "Yağış_7g", value: 0.22 },
-      { feature: "ET_7g", value: 0.18 },
-      { feature: "Sıcaklık_max", value: 0.11 },
-      { feature: "Toprak_nem_proxy", value: 0.09 },
-    ],
-  },
-  {
-    id: "P-5107",
-    name: "Bor / Parsel 7",
-    province: "Niğde",
-    district: "Bor",
-    source: "ndvi",
-    geom: {
-      type: "Feature",
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          [
-            [34.563, 37.897],
-            [34.585, 37.897],
-            [34.585, 37.909],
-            [34.563, 37.909],
-            [34.563, 37.897],
-          ],
-        ],
-      },
-    },
-    series: generateSeries(0.64, -0.0022, 0.018),
-    shap: [
-      { feature: "NDVI_trend", value: 0.24 },
-      { feature: "Yağış_14g", value: 0.19 },
-      { feature: "ET_14g", value: 0.16 },
-      { feature: "Sıcaklık_max", value: 0.1 },
-      { feature: "Rüzgar", value: 0.07 },
-    ],
-  },
-  {
-    id: "P-3803",
-    name: "İncesu / Parsel 3",
-    province: "Kayseri",
-    district: "İncesu",
-    source: "manual",
-    geom: {
-      type: "Feature",
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          [
-            [35.189, 38.643],
-            [35.212, 38.643],
-            [35.212, 38.655],
-            [35.189, 38.655],
-            [35.189, 38.643],
-          ],
-        ],
-      },
-    },
-    series: generateSeries(0.71, -0.0008, 0.014),
-    shap: [
-      { feature: "NDVI_seviye", value: 0.12 },
-      { feature: "Yağış_7g", value: 0.08 },
-      { feature: "ET_7g", value: 0.07 },
-      { feature: "Sıcaklık_max", value: 0.05 },
-      { feature: "Manuel_gözlem", value: 0.04 },
-    ],
-  },
-  {
-    id: "P-0609",
-    name: "Polatlı / Parsel 9",
-    province: "Ankara",
-    district: "Polatlı",
-    source: "ndvi_era5",
-    geom: {
-      type: "Feature",
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          [
-            [32.125, 39.567],
-            [32.149, 39.567],
-            [32.149, 39.58],
-            [32.125, 39.58],
-            [32.125, 39.567],
-          ],
-        ],
-      },
-    },
-    series: generateSeries(0.62, -0.0016, 0.02),
-    shap: [
-      { feature: "Yağış_7g", value: 0.21 },
-      { feature: "NDVI_anomali", value: 0.2 },
-      { feature: "ET_7g", value: 0.15 },
-      { feature: "Sıcaklık_max", value: 0.1 },
-      { feature: "Toprak_nem_proxy", value: 0.08 },
-    ],
-  },
-];
 
 const state = {
-  parcels: structuredClone(MOCK_PARCELS),
+  parcels: [], // backend'den dolacak
   filters: {
     province: "all",
     stress: "all",
