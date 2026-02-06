@@ -55,10 +55,7 @@
           <a href="#report">Parsel Ekle</a>
           <a href="#faq">S.S.S.</a>
         </nav>
-        <div class="nav-actions">
-          <button class="btn btn-ghost">Giriş Yap</button>
-          <button class="btn btn-primary">Kayıt Ol</button>
-        </div>
+ 
         <button class="nav-toggle" aria-label="Menüyü Aç/Kapat">
           ☰
         </button>
@@ -229,6 +226,15 @@
               </select>
             </label>
             <label class="field">
+              <span>Hızlı seçim (tamponlar)</span>
+              <div class="chip-group">
+                <button class="chip-tampon" type="button" data-province="Ankara">Ankara</button>
+                <button class="chip-tampon" type="button" data-province="Kayseri">Kayseri</button>
+                <button class="chip-tampon" type="button" data-province="Polatlı">Polatlı</button>
+                <button class="chip-tampon" type="button" data-province="Konya">Konya / Karapınar</button>
+              </div>
+            </label>
+            <label class="field">
               <span>Stres seviyesi</span>
               <div class="chip-group">
                 <button class="chip-filter active" type="button" data-stress="all">
@@ -337,6 +343,8 @@
                   <div class="rec-title">Akıllı sulama önerisi</div>
                   <div class="rec-body" id="recBody">Bir parsel seçin.</div>
                 </div>
+
+                <!-- Chat widget moved to floating box (see end of document) -->
               </aside>
             </div>
             <div class="map-table">
@@ -566,6 +574,19 @@
       crossorigin=""
     ></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Floating chat widget -->
+    <div class="floating-chat" id="floatingChat" aria-live="polite">
+      <div class="floating-chat-header">AquaGuard Asistanı</div>
+      <div class="floating-chat-body">
+        <div class="chat-buttons-compact">
+          <button class="chat-btn" data-q="durum" disabled>Genel durum</button>
+          <button class="chat-btn" data-q="yagis" disabled>Son yağış</button>
+          <button class="chat-btn" data-q="sulama" disabled>Sulama önerisi</button>
+          <button class="chat-btn" data-q="ndvi" disabled>NDVI trendi</button>
+        </div>
+        <div id="chatResponseFloat" class="chat-response">Parsel seçmeden cevap verilemez.</div>
+      </div>
+    </div>
     <script src="app.js"></script>
   </body>
 </html>

@@ -1,12 +1,13 @@
-import os
+from pathlib import Path
 import joblib
 import pandas as pd
 
-from features import build_features
+from .features import build_features
 
 
-MODEL_PATH = "model_7d.joblib"
-FEATURES_PATH = "feature_columns.joblib"
+BASE = Path(__file__).resolve().parent
+MODEL_PATH = BASE / "model_7d.joblib"
+FEATURES_PATH = BASE / "feature_columns.joblib"
 
 
 def anomaly_to_risk(anomaly: float) -> int:
@@ -15,13 +16,13 @@ def anomaly_to_risk(anomaly: float) -> int:
 
 
 def load_artifacts():
-    if not os.path.exists(MODEL_PATH) or not os.path.exists(FEATURES_PATH):
+    if not MODEL_PATH.exists() or not FEATURES_PATH.exists():
         raise FileNotFoundError(
             "Model dosyaları bulunamadı. Önce train.py çalıştır:\n"
-            "python train.py"
+            "python -m backend.ml.train <csv_path>"
         )
-    model = joblib.load(MODEL_PATH)
-    feature_cols = joblib.load(FEATURES_PATH)
+    model = joblib.load(MODEL_PATH.as_posix())
+    feature_cols = joblib.load(FEATURES_PATH.as_posix())
     if not isinstance(feature_cols, (list, tuple)):
         raise TypeError("feature_columns.joblib içeriği list/tuple olmalı.")
     return model, list(feature_cols)
