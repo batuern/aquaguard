@@ -1,9 +1,30 @@
-/* AquaGuard AI - Demo Interactive App (Leaflet + Chart.js)
-   - Mock parsel verisi
-   - Filtre state'i
-   - Harita + tablo senkronu
-   - "Neden yüksek stres?" AI açıklama paneli ve grafikler (mock SHAP)
-*/
+const API_BASE = "http://127.0.0.1:8000";
+const API = {
+  health: `${API_BASE}/health`, // ✅ eklendi
+  parcels: `${API_BASE}/parcels`,
+  timeseries: (id) => `${API_BASE}/timeseries?parcel_id=${encodeURIComponent(id)}`,
+  predict: `${API_BASE}/predict`,
+  recommend: `${API_BASE}/recommend`,
+};
+
+async function apiGet(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`GET ${url} -> ${r.status}`);
+  return r.json();
+}
+
+async function apiPost(url, body) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`POST ${url} -> ${r.status} ${t}`);
+  }
+  return r.json();
+}
 
 const STRESS = {
   low: { label: "Düşük", color: "#16a34a", fill: "rgba(22,163,74,0.22)" },
@@ -37,17 +58,16 @@ function daysAgo(n) {
   return d.toISOString().slice(0, 10);
 }
 
+/** MOCK generator (fallback için) */
 function generateSeries(baseNdvi, trend, volatility = 0.02) {
-  // 28 günlük seri üret
   const pts = [];
   for (let i = 27; i >= 0; i--) {
     const date = daysAgo(i);
     const rain = clamp(Math.round(rnd(0, 18)), 0, 30);
-    const et = clamp(Number((rnd(2.5, 6.5)).toFixed(1)), 0, 10);
+    const et = clamp(Number(rnd(2.5, 6.5).toFixed(1)), 0, 10);
     const ndviNoise = rnd(-volatility, volatility);
     const ndvi = clamp(baseNdvi + trend * (27 - i) + ndviNoise, 0.05, 0.92);
 
-    // Mock stres: NDVI düşerse artar; yağış az + ET yüksekse artar
     let stress =
       (0.72 - ndvi) * 140 +
       clamp(6 - rain / 3, 0, 6) * 6 +
@@ -59,7 +79,7 @@ function generateSeries(baseNdvi, trend, volatility = 0.02) {
   return pts;
 }
 
-// Basit GeoJSON poligonlar (demo amaçlı dikdörtgen parseller)
+/** Fallback MOCK parcels (backend olmazsa) */
 const MOCK_PARCELS = [
   {
     id: "P-4201",
@@ -193,7 +213,8 @@ const state = {
     to: null,
   },
   selectedId: null,
-  rainFactor: 1, // 1 = mevcut, <1 az yağış, >1 çok yağış
+  rainFactor: 1,
+  backendOk: false,
 };
 
 // DOM
@@ -230,7 +251,7 @@ let chartClimate;
 let chartShap;
 
 function getSnapshot(parcel, from, to) {
-  const series = parcel.series;
+  const series = parcel.series || [];
   let filtered = series;
   if (from) filtered = filtered.filter((p) => p.date >= from);
   if (to) filtered = filtered.filter((p) => p.date <= to);
@@ -240,7 +261,6 @@ function getSnapshot(parcel, from, to) {
 
 function displayStress(baseStress) {
   const f = state.rainFactor;
-  // Yağış azalınca stres artsın, artınca azalsın
   const delta = (1 - f) * 35;
   return clamp(Math.round(baseStress + delta), 0, 100);
 }
@@ -251,7 +271,8 @@ function filterParcels() {
     if (province !== "all" && p.province !== province) return false;
     if (source !== "all" && p.source !== source) return false;
     const snap = getSnapshot(p, from, to);
-    const b = stressBucket(displayStress(snap.stress));
+    if (!snap) return false;
+    const b = stressBucket(displayStress(snap.stress ?? 0));
     if (stress !== "all" && b !== stress) return false;
     return true;
   });
@@ -259,7 +280,7 @@ function filterParcels() {
 
 function styleForParcel(parcel) {
   const snap = getSnapshot(parcel, state.filters.from, state.filters.to);
-  const bucket = stressBucket(displayStress(snap.stress));
+  const bucket = stressBucket(displayStress(snap?.stress ?? 0));
   return {
     color: STRESS[bucket].color,
     weight: state.selectedId === parcel.id ? 3 : 2,
@@ -274,7 +295,7 @@ function ensureMap() {
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap',
+    attribution: "&copy; OpenStreetMap",
   }).addTo(map);
 
   parcelLayer = L.geoJSON([], {
@@ -289,11 +310,8 @@ function ensureMap() {
 
 function setMapLoading(isLoading) {
   if (!elMapLoading) return;
-  if (isLoading) {
-    elMapLoading.classList.remove("hidden");
-  } else {
-    elMapLoading.classList.add("hidden");
-  }
+  if (isLoading) elMapLoading.classList.remove("hidden");
+  else elMapLoading.classList.add("hidden");
 }
 
 function rebuildLayers() {
@@ -303,6 +321,7 @@ function rebuildLayers() {
   parcelLayer.clearLayers();
 
   const visible = filterParcels();
+
   const features = visible.map((p) => ({
     ...p.geom,
     properties: {
@@ -314,14 +333,16 @@ function rebuildLayers() {
   }));
 
   parcelLayer.addData(features);
+
   parcelLayer.eachLayer((layer) => {
     const id = layer.feature?.properties?.id;
     const parcel = state.parcels.find((x) => x.id === id);
     if (!parcel) return;
     layer.setStyle(styleForParcel(parcel));
     const snap = getSnapshot(parcel, state.filters.from, state.filters.to);
+    const stressVal = displayStress(snap?.stress ?? 0);
     layer.bindTooltip(
-      `<strong>${parcel.name}</strong><br/>Stres: ${displayStress(snap.stress)}/100<br/>NDVI: ${snap.ndvi}`,
+      `<strong>${parcel.name}</strong><br/>Stres: ${stressVal}/100<br/>NDVI: ${snap?.ndvi ?? "—"}`,
       { sticky: true }
     );
     layerById.set(id, layer);
@@ -332,7 +353,7 @@ function rebuildLayers() {
     if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
   }
 
-  setTimeout(() => setMapLoading(false), 260);
+  setTimeout(() => setMapLoading(false), 220);
 }
 
 function renderTable() {
@@ -346,11 +367,11 @@ function renderTable() {
   elTable.innerHTML = visible
     .map((p) => {
       const snap = getSnapshot(p, state.filters.from, state.filters.to);
-      const display = displayStress(snap.stress);
+      const display = displayStress(snap?.stress ?? 0);
       const bucket = stressBucket(display);
+      const updated = snap?.date ? fmtDate(snap.date) : "—";
       const sourceLabel =
         p.source === "ndvi_era5" ? "NDVI + ERA5" : p.source === "ndvi" ? "NDVI" : "Manuel";
-      const updated = fmtDate(snap.date);
       return `
         <div class="map-table-row" data-id="${p.id}" role="button" tabindex="0">
           <span>${p.name}</span>
@@ -377,72 +398,6 @@ function updateLayerStyles() {
     if (!parcel) return;
     layer.setStyle(styleForParcel(parcel));
   });
-}
-
-function buildWhyText(parcel, snap) {
-  const recent = parcel.series.slice(-14);
-  const ndviStart = recent[0]?.ndvi ?? snap.ndvi;
-  const ndviDelta = Number((snap.ndvi - ndviStart).toFixed(3));
-  const rainSum = recent.reduce((s, x) => s + x.rain, 0);
-  const etAvg = recent.reduce((s, x) => s + x.et, 0) / Math.max(1, recent.length);
-
-  const ndviDrop = Math.max(0, ndviStart - snap.ndvi); // düşüş pozitif
-  const ndviScore = clamp(ndviDrop / 0.3, 0, 1);
-  const rainDef = Math.max(0, 40 - rainSum);
-  const rainScore = clamp(rainDef / 40, 0, 1);
-  const etExc = Math.max(0, etAvg - 4);
-  const etScore = clamp(etExc / 4, 0, 1);
-
-  return `
-    <div style="margin-bottom:0.35rem;">
-      <strong>Neden ${stressBucket(displayStress(snap.stress)) === "high" ? "yüksek" : "bu seviyede"} stres?</strong>
-      Model, son 7–14 gün sinyallerini birleştirerek bu parseli riskli görüyor.
-    </div>
-    <div style="margin:0.2rem 0 0.1rem;font-size:0.78rem;color:#6b7280;">Başlıca faktörler:</div>
-    <ul style="margin-left:1.1rem; font-size:0.8rem;">
-      <li><strong>NDVI düşüşü</strong> (${ndviDelta}): 
-        <span style="display:inline-block;width:90px;height:6px;border-radius:999px;background:rgba(22,163,74,0.12);overflow:hidden;vertical-align:middle;">
-          <span style="display:block;height:100%;width:${Math.round(
-            ndviScore * 100
-          )}%;background:linear-gradient(to right,#22c55e,#16a34a);"></span>
-        </span>
-      </li>
-      <li><strong>Yağış eksikliği</strong> (${rainSum.toFixed(1)} mm / 14g):
-        <span style="display:inline-block;width:90px;height:6px;border-radius:999px;background:rgba(14,165,233,0.12);overflow:hidden;vertical-align:middle;">
-          <span style="display:block;height:100%;width:${Math.round(
-            rainScore * 100
-          )}%;background:linear-gradient(to right,#0ea5e9,#0369a1);"></span>
-        </span>
-      </li>
-      <li><strong>ET artışı</strong> (${etAvg.toFixed(1)}): 
-        <span style="display:inline-block;width:90px;height:6px;border-radius:999px;background:rgba(15,118,110,0.12);overflow:hidden;vertical-align:middle;">
-          <span style="display:block;height:100%;width:${Math.round(
-            etScore * 100
-          )}%;background:linear-gradient(to right,#0f766e,#0d9488);"></span>
-        </span>
-      </li>
-    </ul>
-    <div style="margin-top:0.35rem;">
-      Son 14 gün: NDVI değişimi <strong>${ndviDelta}</strong>, toplam yağış <strong>${rainSum} mm</strong>,
-      ortalama ET <strong>${etAvg.toFixed(1)}</strong>.
-    </div>
-  `;
-}
-
-function buildRecommendation(parcel, snap) {
-  // Demo öneri: stres yükseldikçe mm artar
-  const mm = clamp(Math.round(8 + snap.stress * 0.22), 8, 30);
-  const window =
-    snap.stress >= 70
-      ? "24–48 saat içinde"
-      : snap.stress >= 40
-        ? "2–4 gün içinde"
-        : "planlı sulama penceresinde";
-  const note =
-    parcel.source === "manual"
-      ? "Manuel gözlem eklendiği için öneri belirsizliği daha yüksek olabilir."
-      : "Öneri NDVI + iklim sinyallerine göre hesaplanan demo çıktıdır.";
-  return `<strong>${window}</strong> yaklaşık <strong>${mm} mm</strong> sulama önerilir. <span style="opacity:.85">${note}</span>`;
 }
 
 function ensureCharts() {
@@ -474,7 +429,7 @@ function ensureCharts() {
         y1: {
           position: "right",
           grid: { drawOnChartArea: false },
-          title: { display: true, text: "ET" },
+          title: { display: true, text: "ET (proxy)" },
         },
       },
     },
@@ -488,7 +443,7 @@ function ensureCharts() {
       animation: false,
       indexAxis: "y",
       plugins: { legend: { display: false } },
-      scales: { x: { suggestedMin: 0, suggestedMax: 0.5 } },
+      scales: { x: { suggestedMin: 0, suggestedMax: 1 } },
     },
   });
 }
@@ -507,20 +462,58 @@ function animateNumber(el, targetStr) {
   function frame(now) {
     const t = clamp((now - startTime) / duration, 0, 1);
     const current = start + diff * t;
+
     el.textContent = targetStr.includes("mm")
       ? `${current.toFixed(1)} mm`
       : targetStr.includes("/100")
         ? `${Math.round(current)}/100`
         : current.toFixed(3);
+
     if (t < 1) requestAnimationFrame(frame);
   }
 
   requestAnimationFrame(frame);
 }
 
+/** Backend timeseries -> frontend series format */
+function mapBackendSeries(timeseries) {
+  // backend:
+  // { ndvi:[{date,value}], meteo:[{date,rain_mm,temp_c}] }
+  const ndviMap = new Map((timeseries.ndvi || []).map((p) => [p.date, p.value]));
+  const meteo = timeseries.meteo || [];
+
+  // ET yok; temp'ten proxy üret (0-10 bandına çek)
+  function etProxy(tempC) {
+    // basit demo: 0..40C -> 2..7
+    return clamp(2 + (Number(tempC) || 0) * 0.12, 0, 10);
+  }
+
+  const series = meteo.map((m) => {
+    const ndvi = ndviMap.get(m.date);
+    const rain = Number(m.rain_mm ?? 0);
+    const temp = Number(m.temp_c ?? 0);
+    return {
+      date: m.date,
+      ndvi: Number.isFinite(ndvi) ? Number(ndvi.toFixed(3)) : 0,
+      rain,
+      et: Number(etProxy(temp).toFixed(1)),
+      // stress: backendten direkt gelmiyor → predict'ten gelecek risk_7d panelde gösterilecek
+      // harita renklendirme için geçici proxy:
+      stress: clamp(Math.round((0.72 - (ndvi ?? 0.5)) * 140 + clamp(6 - rain / 3, 0, 6) * 6), 0, 100),
+    };
+  });
+
+  // seri boşsa fallback
+  if (!series.length) return generateSeries(0.62, -0.0016, 0.02);
+
+  return series;
+}
+
 function updateCharts(parcel) {
   ensureCharts();
-  const series = parcel.series;
+  const series = parcel.series || [];
+  if (!series.length) return;
+
   const last28 = series.slice(-28);
 
   // NDVI
@@ -553,7 +546,7 @@ function updateCharts(parcel) {
     },
     {
       type: "line",
-      label: "ET",
+      label: "ET (proxy)",
       data: last14.map((p) => p.et),
       borderColor: "#0f766e",
       backgroundColor: "rgba(15,118,110,0.12)",
@@ -564,12 +557,12 @@ function updateCharts(parcel) {
   ];
   chartClimate.update();
 
-  // Açıklayıcı bar grafiği: NDVI düşüşü, yağış eksikliği, ET artışı
+  // Açıklayıcı bar grafiği (demo)
   const ndviStart = last14[0]?.ndvi ?? last28[0]?.ndvi ?? series[0].ndvi;
   const ndviEnd = last14[last14.length - 1]?.ndvi ?? last28[last28.length - 1].ndvi;
   const ndviDrop = Math.max(0, ndviStart - ndviEnd);
-  const rainSum = last14.reduce((s, x) => s + x.rain, 0);
-  const etAvg = last14.reduce((s, x) => s + x.et, 0) / Math.max(1, last14.length);
+  const rainSum = last14.reduce((s, x) => s + (x.rain ?? 0), 0);
+  const etAvg = last14.reduce((s, x) => s + (x.et ?? 0), 0) / Math.max(1, last14.length);
 
   const ndviScore = clamp(ndviDrop / 0.3, 0, 1);
   const rainScore = clamp(Math.max(0, 40 - rainSum) / 40, 0, 1);
@@ -588,32 +581,126 @@ function updateCharts(parcel) {
   chartShap.update();
 }
 
-function selectParcel(id) {
+/** Backend ile predict + recommend */
+async function enrichWithMl(parcel) {
+  // parcel.id (bizim internal id) backend parcel_id ile aynı değilse uyarlaman gerekir.
+  // Backend /parcels şimdilik name=parcel_id dönüyor.
+  // Bu entegrasyonda parcel.id = backend parcel_id varsayıyoruz.
+  const parcelId = parcel.id;
+
+  const pred = await apiPost(API.predict, { parcel_id: parcelId });
+  const risk7 = Number(pred.risk_7d ?? 0);
+  const ndviPred = Number(pred.ndvi_7d_pred ?? NaN);
+
+  // Stress KPI: gerçek model risk_7d
+  animateNumber(elKpiStress, `${Math.round(risk7)}/100`);
+
+  // NDVI KPI: istersen mevcut son NDVI, istersen ndvi_7d_pred
+  if (Number.isFinite(ndviPred)) {
+    // burada tahmini göstermek istersen:
+    // animateNumber(elKpiNdvi, `${ndviPred}`);
+    // ben mevcut son NDVI'yı bırakıyorum (snap)
+  }
+
+  // Yağış senaryosu slider'ını backend'e de gönderiyoruz ki öneri gerçekten değişsin
+  const rec = await apiPost(API.recommend, {
+    parcel_id: parcelId,
+    risk_7d: risk7,
+    rain_factor: state.rainFactor || 1,
+  });
+  elRec.innerHTML = `<strong>${rec.window}</strong> yaklaşık <strong>${rec.amount_mm} mm</strong> sulama önerilir. <span style="opacity:.85">${rec.rationale}</span>`;
+
+  // Why text: pred içeriğine göre daha gerçekçi yapmak istersen burada geliştirebiliriz
+}
+
+function buildWhyText(parcel, snap) {
+  // Güvenli fallback: parcel/snap yoksa patlamasın
+  if (!parcel || !snap) return "Analiz verisi yok.";
+
+  // Son 14 gün üzerinden basit açıklama üret (demo)
+  const recent = (parcel.series || []).slice(-14);
+  const ndviStart = recent[0]?.ndvi ?? snap.ndvi ?? 0;
+  const ndviEnd = snap.ndvi ?? ndviStart;
+  const ndviDelta = Number((ndviEnd - ndviStart).toFixed(3));
+
+  const rainSum = recent.reduce((s, x) => s + (Number(x.rain) || 0), 0);
+  const etAvg =
+    recent.reduce((s, x) => s + (Number(x.et) || 0), 0) / Math.max(1, recent.length);
+
+  return `
+    <div style="margin-bottom:0.35rem;">
+      <strong>Neden bu stres?</strong>
+      Model, son 7–14 gün sinyallerini birleştirerek bu parseli değerlendiriyor.
+    </div>
+    <ul style="margin-left:1.1rem; font-size:0.85rem;">
+      <li><strong>NDVI değişimi:</strong> ${ndviDelta}</li>
+      <li><strong>Toplam yağış (14g):</strong> ${rainSum.toFixed(1)} mm</li>
+      <li><strong>Ortalama ET (14g):</strong> ${etAvg.toFixed(1)}</li>
+    </ul>
+  `;
+}
+
+// ✅ EKLENDİ: Backend yokken kullanılan öneri fonksiyonu (selectParcel içinde çağrılıyordu)
+function buildRecommendation(parcel, snap) {
+  if (!parcel || !snap) return "Öneri üretilemedi.";
+
+  const recent = (parcel.series || []).slice(-7);
+  const rainSum = recent.reduce((s, x) => s + (Number(x.rain) || 0), 0);
+  const ndvi = Number(snap.ndvi ?? 0);
+
+  // Basit demo kural: NDVI düşükse daha fazla su; yağış geldiyse azalt
+  let amount = 0;
+  if (ndvi < 0.45) amount = 25;
+  else if (ndvi < 0.6) amount = 15;
+  else amount = 8;
+
+  // Son 7 gün yağışını ve yağış senaryosu slider'ını dikkate al:
+  // - Gerçek yağış arttıkça sulama ihtiyacı azalsın
+  // - Slider (rainFactor) < 1 ise "daha az yağış" senaryosu → daha fazla sulama
+  // - Slider (rainFactor) > 1 ise "daha çok yağış" senaryosu → daha az sulama
+  const adjustedBase = Math.max(0, amount - rainSum * 0.4);
+  const rf = state.rainFactor || 1;
+  const scenarioScale = Math.max(0.7, Math.min(1.3, 1.3 - (rf - 1) * 0.6));
+  const finalAmount = Math.max(0, Math.round(adjustedBase * scenarioScale));
+
+  return `<strong>Öneri (demo):</strong> Mevcut yağış verisi ve senaryo (%${Math.round(
+    rf * 100,
+  )}) dikkate alınarak, önümüzdeki 48 saatte yaklaşık <strong>${finalAmount} mm</strong> sulama planla.`;
+}
+
+/** Parcel seçimi */
+async function selectParcel(id) {
   const parcel = state.parcels.find((p) => p.id === id);
   if (!parcel) return;
   state.selectedId = id;
 
-  // UI
   const snap = getSnapshot(parcel, state.filters.from, state.filters.to);
-  const adjustedStress = displayStress(snap.stress);
+  const adjustedStress = displayStress(snap?.stress ?? 0);
   const bucket = stressBucket(adjustedStress);
 
   elATitle.textContent = parcel.name;
   elASub.textContent = `${parcel.province} · Kaynak: ${
     parcel.source === "ndvi_era5" ? "NDVI + ERA5" : parcel.source === "ndvi" ? "NDVI" : "Manuel"
-  } · Son güncelleme: ${fmtDate(snap.date)}`;
+  } · Son güncelleme: ${snap?.date ? fmtDate(snap.date) : "—"}`;
 
   elABadges.innerHTML = `
     <span class="pill ${bucket}">${STRESS[bucket].label} stres</span>
     <span class="pill">${parcel.id}</span>
   `;
 
-  animateNumber(elKpiStress, `${adjustedStress}/100`);
-  animateNumber(elKpiNdvi, `${snap.ndvi}`);
-  animateNumber(elKpiRain, `${snap.rain} mm`);
-  animateNumber(elKpiEt, `${snap.et}`);
-  elWhy.innerHTML = buildWhyText(parcel, snap);
-  elRec.innerHTML = buildRecommendation(parcel, snap);
+  // NDVI / Rain / ET KPI: seriden
+  animateNumber(elKpiNdvi, `${snap?.ndvi ?? 0}`);
+  animateNumber(elKpiRain, `${snap?.rain ?? 0} mm`);
+  animateNumber(elKpiEt, `${snap?.et ?? 0}`);
+
+  // Panel: önce demo metin
+  elWhy.innerHTML = `
+    <div style="margin-bottom:0.35rem;"><strong>Model analizi</strong></div>
+    <div style="font-size:.82rem;color:#6b7280;">
+      Backend bağlıysa XGBoost tahmininden gelen risk skoru ve öneri gösterilir.
+    </div>
+  `;
+  elRec.innerHTML = `Yükleniyor...`;
 
   updateCharts(parcel);
   updateLayerStyles();
@@ -631,20 +718,42 @@ function selectParcel(id) {
       layer.openTooltip();
     } catch {}
   }
+
+  // ML enrich (backend varsa)
+  if (state.backendOk) {
+    try {
+      await enrichWithMl(parcel);
+    } catch (e) {
+      console.error(e);
+      elRec.innerHTML = `<span style="color:#b91c1c;">Model çağrısı başarısız: ${String(e.message || e)}</span>`;
+    }
+  } else {
+    // backend yoksa demo stres göster
+    animateNumber(elKpiStress, `${Math.round(adjustedStress)}/100`);
+    elWhy.innerHTML = buildWhyText(parcel, snap);
+    elRec.innerHTML = buildRecommendation(parcel, snap);
+  }
+
+  // Enable chat buttons (parcel selected)
+  document.querySelectorAll('.chat-btn').forEach((b) => {
+    b.disabled = false;
+  });
+  const chatResp = document.getElementById('chatResponseFloat');
+  if (chatResp) chatResp.textContent = 'Soru seçin: örn. "Parselin genel durumu".';
 }
 
+/** Province options */
 function populateProvinceOptions() {
   const provinces = Array.from(new Set(state.parcels.map((p) => p.province))).sort();
-  elProvince.innerHTML = `<option value="all">Tümü</option>` + provinces.map((x) => `<option value="${x}">${x}</option>`).join("");
+  elProvince.innerHTML =
+    `<option value="all">Tümü</option>` +
+    provinces.map((x) => `<option value="${x}">${x}</option>`).join("");
 }
 
 function bindFilters() {
-  // Chip filters
   document.querySelectorAll(".chip-filter[data-stress]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      document
-        .querySelectorAll(".chip-filter[data-stress]")
-        .forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".chip-filter[data-stress]").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       state.filters.stress = btn.dataset.stress;
     });
@@ -669,20 +778,25 @@ function bindFilters() {
       if (state.selectedId) selectParcel(state.selectedId);
     });
   }
+
+  // Tampon quick buttons
+  document.querySelectorAll('.chip-tampon').forEach((b) => {
+    b.addEventListener('click', () => {
+      const prov = b.dataset.province;
+      elProvince.value = prov;
+      state.filters.province = prov;
+      rebuildLayers();
+      renderTable();
+    });
+  });
 }
 
 function bindForm() {
   if (!form) return;
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    const fd = new FormData(form);
 
-    const inName = (fd.get("fullName") || "").toString().trim() || "Demo Kullanıcı";
-    const inEmail = (fd.get("email") || "").toString().trim();
-    const inIl = (fd.get("province") || "").toString().trim() || "Konya";
-    const inIlce = (fd.get("district") || "").toString().trim() || "Merkez";
-    void inEmail;
-
+    // Demo: yeni parsel ekleme (backend’e yazmıyoruz)
     const newId = `P-${Math.floor(rnd(1000, 9999))}`;
     const lat = rnd(37.2, 38.2);
     const lng = rnd(32.2, 33.2);
@@ -691,9 +805,9 @@ function bindForm() {
 
     const parcel = {
       id: newId,
-      name: `${inIlce} / Parsel (Yeni)`,
-      province: inIl,
-      district: inIlce,
+      name: `Yeni Parsel (${newId})`,
+      province: "Konya",
+      district: "Merkez",
       source: "ndvi_era5",
       geom: {
         type: "Feature",
@@ -711,13 +825,7 @@ function bindForm() {
         },
       },
       series: generateSeries(rnd(0.56, 0.7), rnd(-0.004, -0.001), 0.02),
-      shap: [
-        { feature: "NDVI_anomali", value: rnd(0.15, 0.35) },
-        { feature: "Yağış_7g", value: rnd(0.12, 0.28) },
-        { feature: "ET_7g", value: rnd(0.1, 0.22) },
-        { feature: "Sıcaklık_max", value: rnd(0.06, 0.14) },
-        { feature: "Toprak_nem_proxy", value: rnd(0.04, 0.12) },
-      ],
+      shap: [],
     };
 
     state.parcels.unshift(parcel);
@@ -726,26 +834,105 @@ function bindForm() {
     renderTable();
     selectParcel(parcel.id);
 
-    // Formu temizle
     form.reset();
-    // Basit kullanıcı geri bildirimi
     alert(`Parsel eklendi (demo): ${newId}`);
-    void inName;
   });
 }
 
-function init() {
-  populateProvinceOptions();
-  bindFilters();
-  bindForm();
-  rebuildLayers();
-  renderTable();
-
-  // Varsayılan seçim
-  const first = filterParcels()[0];
-  if (first) selectParcel(first.id);
+function bindChat() {
+  const chatBtns = document.querySelectorAll('.chat-btn');
+  const chatResp = document.getElementById('chatResponseFloat');
+  chatBtns.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const q = btn.dataset.q;
+      if (!state.selectedId) {
+        chatResp.textContent = 'Parsel seçmeden cevap verilemez.';
+        return;
+      }
+      chatResp.textContent = 'Yanıt aranıyor...';
+      try {
+        const r = await apiPost(`${API_BASE}/chat`, { parcel_id: state.selectedId, question: q });
+        chatResp.textContent = r.answer || 'Cevap alınamadı.';
+      } catch (e) {
+        console.error(e);
+        chatResp.textContent = `Hata: ${e?.message || e}`;
+      }
+    });
+  });
 }
 
-document.addEventListener("DOMContentLoaded", init);
+/** Backend’ten gerçek parselleri ve serileri yükle */
+async function loadFromBackend() {
+  // health ping
+  await apiGet(API.health);
 
+  // parcels
+  const parcels = await apiGet(API.parcels);
+  // parcels: [{parcel_id, name}]
+  // Haritada çizmek için polygon yok -> demo polygon üretiyoruz (merkez Türkiye etrafı)
+  function randomPoly() {
+    const lat = rnd(36.5, 39.3);
+    const lng = rnd(30.5, 35.5);
+    const w = rnd(0.01, 0.03);
+    const h = rnd(0.006, 0.02);
+    return {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [[[lng, lat],[lng+w, lat],[lng+w, lat+h],[lng, lat+h],[lng, lat]]],
+      },
+    };
+  }
 
+  const enriched = [];
+  for (const p of parcels) {
+    const pid = p.parcel_id;
+    const ts = await apiGet(API.timeseries(pid));
+    const series = mapBackendSeries(ts);
+
+    // province/district backend'te yok -> demo
+    enriched.push({
+      id: pid,
+      name: p.name || pid,
+      province: "—",
+      district: "—",
+      source: "ndvi_era5",
+      geom: randomPoly(),
+      series,
+      shap: [],
+    });
+  }
+
+  state.parcels = enriched;
+  state.backendOk = true;
+}
+
+/** init */
+async function init() {
+  try {
+    // Backend’i dene, yoksa mock ile devam et
+    try {
+      await loadFromBackend();
+      console.log("Backend connected ✅");
+    } catch (e) {
+      console.warn("Backend not available, using MOCK ❗", e);
+      state.backendOk = false;
+      state.parcels = structuredClone(MOCK_PARCELS);
+    }
+
+    populateProvinceOptions();
+    bindFilters();
+    bindForm();
+    bindChat();
+    rebuildLayers();
+    renderTable();
+
+    const first = filterParcels()[0];
+    if (first) await selectParcel(first.id);
+  } catch (e) {
+    console.error(e);
+    alert(`Başlatma hatası: ${e?.message || e}`);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => void init());
